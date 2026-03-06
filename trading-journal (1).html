@@ -2171,7 +2171,13 @@ console.log(`TradeLog Pro — GitHub: privát repo, localStorage memória, JSON 
 // GOOGLE SHEETS SZINKRONIZÁCIÓ
 // ══════════════════════════════════════════
 
-let sheetsConfig = JSON.parse(localStorage.getItem('tl-sheets') || '{"url":"","auto":false,"lastSync":""}');
+let sheetsConfig = JSON.parse(localStorage.getItem('tl-sheets') || '{}');
+// Beégetett URL — nem kell kézzel beállítani
+if (!sheetsConfig.url) {
+  sheetsConfig.url  = 'https://script.google.com/macros/s/AKfycbwcLLIQ4dEupEViuIFm0MClQK_tw0LOGNr4mkbzXvy7wJd3WieWrfI66IV3xkvTykOYqg/exec';
+  sheetsConfig.auto = true;
+  localStorage.setItem('tl-sheets', JSON.stringify(sheetsConfig));
+}
 
 function saveSheetsConfig() {
   localStorage.setItem('tl-sheets', JSON.stringify(sheetsConfig));
@@ -2180,9 +2186,12 @@ function saveSheetsConfig() {
 function openSheetsSettings() {
   const el = document.getElementById('sheets-modal');
   el.classList.add('open');
-  document.getElementById('sheets-url-input').value = sheetsConfig.url || '';
-  document.getElementById('sheets-auto-toggle').checked = sheetsConfig.auto;
-  document.getElementById('auto-label').textContent = sheetsConfig.auto ? 'BE' : 'KI';
+  const inp = document.getElementById('sheets-url-input');
+  if (inp) inp.value = sheetsConfig.url || '';
+  const tog = document.getElementById('sheets-auto-toggle');
+  if (tog) tog.checked = sheetsConfig.auto;
+  const lbl = document.getElementById('auto-label');
+  if (lbl) lbl.textContent = sheetsConfig.auto ? 'BE' : 'KI';
   updateSheetsStatusUI();
 }
 
@@ -2222,49 +2231,51 @@ function copyScript() {
 }
 
 async function testSheetsConnection() {
-  const url = document.getElementById('sheets-url-input').value.trim();
-  if (!url) { updateSheetsStatusUI('err', '❌ Add meg az URL-t!'); return; }
   updateSheetsStatusUI('idle', '⏳ Kapcsolódás...');
   try {
-    const res = await fetch(url, { method: 'GET', mode: 'no-cors' });
+    await fetch(sheetsConfig.url, { method: 'GET', mode: 'no-cors' });
     updateSheetsStatusUI('ok', '✅ Kapcsolat OK — próbáld a Szinkronizálás most gombot');
+    updateStatusDot('green');
   } catch(e) {
     updateSheetsStatusUI('err', '❌ Hiba: ' + e.message);
+    updateStatusDot('red');
   }
 }
 
 async function syncNow() {
-  await syncToSheets(true);
+  updateSheetsStatusUI('idle', '⏳ Szinkronizálás...');
+  try {
+    await fetch(sheetsConfig.url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ btc: data.btc, ndq: data.ndq, sp: data.sp, timestamp: new Date().toISOString() })
+    });
+    sheetsConfig.lastSync = new Date().toLocaleString('hu-HU');
+    saveSheetsConfig();
+    updateStatusDot('green');
+    updateSheetsStatusUI('ok', '✅ Szinkronizálva: ' + sheetsConfig.lastSync);
+  } catch(e) {
+    updateStatusDot('red');
+    updateSheetsStatusUI('err', '❌ Hiba: ' + e.message);
+  }
 }
 
 async function syncToSheets(manual = false) {
   if (!sheetsConfig.url) return;
   if (!manual && !sheetsConfig.auto) return;
-
-  if (manual) updateSheetsStatusUI('idle', '⏳ Szinkronizálás...');
-
   try {
-    const payload = {
-      btc: data.btc,
-      ndq: data.ndq,
-      sp:  data.sp,
-      timestamp: new Date().toISOString()
-    };
-
     await fetch(sheetsConfig.url, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ btc: data.btc, ndq: data.ndq, sp: data.sp, timestamp: new Date().toISOString() })
     });
-
     sheetsConfig.lastSync = new Date().toLocaleString('hu-HU');
     saveSheetsConfig();
     updateStatusDot('green');
-    if (manual) updateSheetsStatusUI('ok', '✅ Szinkronizálva: ' + sheetsConfig.lastSync);
   } catch(e) {
     updateStatusDot('red');
-    if (manual) updateSheetsStatusUI('err', '❌ Szinkronizálási hiba: ' + e.message);
   }
 }
 
